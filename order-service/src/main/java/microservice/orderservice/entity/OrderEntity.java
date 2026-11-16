@@ -1,18 +1,18 @@
 package microservice.orderservice.entity;
 
 import jakarta.persistence.*;
-import org.springframework.data.domain.Persistable;
+import microservice.orderservice.enums.OrderStatus;
 import java.util.UUID;
 
 @Entity
 @Table(name = "orders")
-public class OrderEntity implements Persistable<UUID> {
-    public enum Status { PENDING }
-
+public class OrderEntity {
     @Id
+    @GeneratedValue(strategy = GenerationType.UUID)
     private UUID id;
 
     @Column(nullable = false, length = 100)
+    //Stock Keeping Unit
     private String sku;
 
     @Column(nullable = false)
@@ -20,10 +20,7 @@ public class OrderEntity implements Persistable<UUID> {
 
     @Enumerated(EnumType.STRING)
     @Column(nullable = false, length = 30)
-    private Status status;
-
-    @Transient
-    private boolean newEntity = true;
+    private OrderStatus status;
 
     protected OrderEntity() {}
 
@@ -35,28 +32,14 @@ public class OrderEntity implements Persistable<UUID> {
             throw new IllegalArgumentException("Quantity must be positive");
         }
         OrderEntity order = new OrderEntity();
-        order.id = UUID.randomUUID();
         order.sku = sku;
         order.quantity = quantity;
-        order.status = Status.PENDING;
+        order.status = OrderStatus.PENDING;
         return order;
     }
 
-    @Override
     public UUID getId() {
         return id;
-    }
-
-    @Override
-    public boolean isNew() {
-        // Assigned UUIDs cannot indicate whether this entity has been persisted.
-        return newEntity;
-    }
-
-    @PostPersist
-    @PostLoad
-    private void markPersisted() {
-        newEntity = false;
     }
 
     public String getSku() {
@@ -67,7 +50,7 @@ public class OrderEntity implements Persistable<UUID> {
         return quantity;
     }
 
-    public Status getStatus() {
+    public OrderStatus getStatus() {
         return status;
     }
 }

@@ -7,6 +7,7 @@ import microservice.orderservice.service.OrderService;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 import java.net.URI;
+import java.util.List;
 import java.util.UUID;
 
 @RestController
@@ -24,8 +25,14 @@ public class OrderController {
         return ResponseEntity.created(URI.create("/orders/" + order.id())).body(order);
     }
 
+    @GetMapping("/all")
+    public ResponseEntity<List<OrderResponse>> getAll() {
+        return ResponseEntity.ok(orders.getAll());
+    }
+
     @GetMapping("/{id}")
     public ResponseEntity<OrderResponse> findById(@PathVariable("id") UUID id) {
         return ResponseEntity.of(orders.findById(id));
     }
+
 }

@@ -5,6 +5,7 @@ import microservice.orderservice.entity.OrderEntity;
 import microservice.orderservice.repository.OrderRepository;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 
@@ -20,6 +21,10 @@ public class OrderService {
     @Transactional
     public OrderResponse create(String sku, int quantity) {
         return toResponse(repository.save(OrderEntity.pending(sku, quantity)));
+    }
+
+    public List<OrderResponse> getAll() {
+        return repository.findAll().stream().map(OrderService::toResponse).toList();
     }
 
     public Optional<OrderResponse> findById(UUID id) {
