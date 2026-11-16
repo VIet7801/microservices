@@ -1,3 +1,10 @@
 spring:
   application:
     name: order-service
+  datasource:
+    url: jdbc:postgresql://localhost:5432/order_db
+    username: order_app
+    password: ${ORDER_DB_PASSWORD:order_dev}
+
+server:
+  port: 8081
