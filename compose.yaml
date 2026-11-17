@@ -134,6 +134,18 @@ services:
         condition: service_healthy
       eureka-server:
         condition: service_started
+  gateway-service:
+    profiles: ['apps']
+    build:
+      context: .
+      args:
+        MODULE: gateway-service
+    ports: ['127.0.0.1:8084:8084']
+    environment:
+      EUREKA_CLIENT_SERVICEURL_DEFAULTZONE: http://eureka-server:8761/eureka/
+    depends_on:
+      eureka-server:
+        condition: service_started
 volumes:
   postgres-data:
   redis-data:

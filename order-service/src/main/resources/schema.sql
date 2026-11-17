@@ -1,0 +1,15 @@
+CREATE TABLE IF NOT EXISTS outbox (
+    id UUID PRIMARY KEY,
+    topic VARCHAR(100) NOT NULL,
+    message_key VARCHAR(100) NOT NULL,
+    payload TEXT NOT NULL,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    sent_at TIMESTAMPTZ
+);
+CREATE INDEX IF NOT EXISTS outbox_pending ON outbox(created_at) WHERE sent_at IS NULL;
+
+CREATE TABLE IF NOT EXISTS order_saga (
+    order_id UUID PRIMARY KEY,
+    step VARCHAR(30) NOT NULL,
+    payment_declined BOOLEAN NOT NULL
+);

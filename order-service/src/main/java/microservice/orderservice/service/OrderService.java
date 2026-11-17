@@ -3,6 +3,9 @@ package microservice.orderservice.service;
 import microservice.orderservice.dto.OrderResponse;
 import microservice.orderservice.entity.OrderEntity;
 import microservice.orderservice.repository.OrderRepository;
+import microservice.orderservice.repository.SagaRepository;
+import microservice.messaging.outbox.Outbox;
+import microservice.messaging.dto.SagaMessage;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import java.util.List;
@@ -13,14 +16,21 @@ import java.util.UUID;
 @Transactional(readOnly = true)
 public class OrderService {
     private final OrderRepository repository;
+    private final SagaRepository sagas;
+    private final Outbox outbox;
 
-    public OrderService(OrderRepository repository) {
+    public OrderService(OrderRepository repository, SagaRepository sagas, Outbox outbox) {
         this.repository = repository;
+        this.sagas = sagas;
+        this.outbox = outbox;
     }
 
     @Transactional
-    public OrderResponse create(String sku, int quantity) {
-        return toResponse(repository.save(OrderEntity.pending(sku, quantity)));
+    public OrderResponse create(String sku, int quantity, boolean paymentDeclined) {
+        OrderEntity order = repository.save(OrderEntity.pending(sku, quantity));
+        sagas.start(order.getId(), paymentDeclined);
+        outbox.add("inventory-commands", SagaMessage.of(order.getId(), "ReserveStock", sku, quantity, paymentDeclined));
+        return toResponse(order);
     }
 
     public List<OrderResponse> getAll() {

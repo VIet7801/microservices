@@ -21,7 +21,7 @@ public class OrderController {
 
     @PostMapping
     public ResponseEntity<OrderResponse> create(@Valid @RequestBody CreateOrderRequest request) {
-        OrderResponse order = orders.create(request.sku(), request.quantity());
+        OrderResponse order = orders.create(request.sku(), request.quantity(), request.paymentDeclined());
         return ResponseEntity.created(URI.create("/orders/" + order.id())).body(order);
     }
 

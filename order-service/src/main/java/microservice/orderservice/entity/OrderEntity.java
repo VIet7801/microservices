@@ -12,7 +12,6 @@ public class OrderEntity {
     private UUID id;
 
     @Column(nullable = false, length = 100)
-    //Stock Keeping Unit
     private String sku;
 
     @Column(nullable = false)
@@ -52,5 +51,9 @@ public class OrderEntity {
 
     public OrderStatus getStatus() {
         return status;
+    }
+
+    public void changeStatus(OrderStatus status) {
+        this.status = status;
     }
 }
