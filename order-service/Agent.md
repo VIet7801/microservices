@@ -25,3 +25,12 @@ Gateway dùng Spring Boot để tra địa chỉ order-service, nhưng tự vi�
 không dùng Spring Cloud Gateway.	
 Client gọi được POST /api/orders và GET /api/orders/{id} qua Gateway 
 mà không cần biết cổng của Order Service.
+8. update tại thời điểm viết dòng này: đang dùng RESTful API, cần chuyển đổi sang grbc và có 1 package riêng cho dễ hình dung, quản lý luồng
+9. Outbox( ghi đơn và message trong cùng 1 transaction) chưa có bảng outbox, không có publisher
+10. kafka producer/consumer: Mới chỉ khai báo dependency+cấu hình nhưng chưa thấy sử dụng.
+11. saga orchestration ( điều phôối + bù trừ): chưa có, đơn luôn ở 'pending'
+12. inventory-service,payment-service Chỉ có class main
+13. Redis: có trong compose +pom nhưng chưa dùng
+14. eureka không có lời gọi HTTP nao giữa các service: chua dùng tới
+15. 8 đến 14 là các yêu cầu đã được kieerm tra: Hãy tạo cho tôi 1 ví dụ mẫu ( code có triển khai các ý 8-14)
+về luồng bài toán dặt hàng microservice. tiện làm luôn xử lý lỗi tập trung + kiểm tra groupId đã thống nhất chưa

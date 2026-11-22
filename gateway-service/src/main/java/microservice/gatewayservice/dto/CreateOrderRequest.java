@@ -1,4 +1,4 @@
-package microservice.orderservice.dto;
+package microservice.gatewayservice.dto;
 
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.Positive;

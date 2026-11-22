@@ -1,7 +1,9 @@
 package microservice.orderservice.service;
 
 import microservice.orderservice.dto.OrderResponse;
+import microservice.orderservice.cache.OrderCache;
 import microservice.orderservice.entity.OrderEntity;
+import microservice.orderservice.entity.OrderSagaEntity;
 import microservice.orderservice.repository.OrderRepository;
 import microservice.orderservice.repository.SagaRepository;
 import microservice.messaging.outbox.Outbox;
@@ -18,17 +20,19 @@ public class OrderService {
     private final OrderRepository repository;
     private final SagaRepository sagas;
     private final Outbox outbox;
+    private final OrderCache cache;
 
-    public OrderService(OrderRepository repository, SagaRepository sagas, Outbox outbox) {
+    public OrderService(OrderRepository repository, SagaRepository sagas, Outbox outbox, OrderCache cache) {
         this.repository = repository;
         this.sagas = sagas;
         this.outbox = outbox;
+        this.cache = cache;
     }
 
     @Transactional
     public OrderResponse create(String sku, int quantity, boolean paymentDeclined) {
         OrderEntity order = repository.save(OrderEntity.pending(sku, quantity));
-        sagas.start(order.getId(), paymentDeclined);
+        sagas.save(OrderSagaEntity.start(order.getId(), paymentDeclined));
         outbox.add("inventory-commands", SagaMessage.of(order.getId(), "ReserveStock", sku, quantity, paymentDeclined));
         return toResponse(order);
     }
@@ -38,7 +42,13 @@ public class OrderService {
     }
 
     public Optional<OrderResponse> findById(UUID id) {
-        return repository.findById(id).map(OrderService::toResponse);
+        var cached = cache.get(id);
+        if (cached.isPresent()) {
+            return cached;
+        }
+        var order = repository.findById(id).map(OrderService::toResponse);
+        order.ifPresent(cache::put);
+        return order;
     }
 
     private static OrderResponse toResponse(OrderEntity order) {

@@ -1,64 +1,105 @@
 package microservice.inventoryservice.service;
 
-import microservice.inventoryservice.model.Reservation;
+import microservice.common.exception.BusinessConflictException;
+import microservice.inventoryservice.dto.StockItemResponse;
 import microservice.inventoryservice.dto.StockRequest;
 import microservice.inventoryservice.dto.StockResponse;
-import microservice.inventoryservice.repository.InventoryRepository;
-import org.springframework.http.HttpStatus;
+import microservice.inventoryservice.entity.Reservation;
+import microservice.inventoryservice.entity.Stock;
+import microservice.inventoryservice.enums.ReservationStatus;
+import microservice.inventoryservice.repository.ReservationRepository;
+import microservice.inventoryservice.repository.StockRepository;
+import microservice.messaging.dto.SagaMessage;
+import microservice.messaging.outbox.Outbox;
+import microservice.messaging.outbox.ProcessedMessages;
+import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
-import org.springframework.web.server.ResponseStatusException;
+import java.util.List;
+import java.util.NoSuchElementException;
+import java.util.Optional;
 import java.util.UUID;
 
 @Service
+@Transactional(readOnly = true)
 public class InventoryService {
-    private final InventoryRepository repository;
+    private final StockRepository stocks;
+    private final ReservationRepository reservations;
+    private final Outbox outbox;
+    private final ProcessedMessages processed;
 
-    public InventoryService(InventoryRepository repository) {
-        this.repository = repository;
+    public InventoryService(StockRepository stocks, ReservationRepository reservations,
+                            Outbox outbox, ProcessedMessages processed) {
+        this.stocks = stocks;
+        this.reservations = reservations;
+        this.outbox = outbox;
+        this.processed = processed;
     }
 
-    public java.util.List<java.util.Map<String, Object>> stocks() {
-        return repository.stocks();
+    public List<StockItemResponse> stocks() {
+        return stocks.findAll(Sort.by("sku")).stream()
+                .map(stock -> new StockItemResponse(stock.getSku(), stock.getAvailable())).toList();
+    }
+
+    public StockResponse find(UUID orderId) {
+        return reservations.findById(orderId).map(InventoryService::toResponse)
+                .orElseThrow(() -> new NoSuchElementException("Reservation not found"));
     }
 
     @Transactional
     public StockResponse reserve(StockRequest request) {
         if (request.orderId() == null || request.sku() == null || request.sku().isBlank()
                 || request.sku().length() > 100 || request.quantity() < 1) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Invalid stock request");
+            throw new IllegalArgumentException("Invalid stock request");
         }
-        repository.lock(request.orderId());
-        Reservation existing = repository.find(request.orderId());
-        if (existing != null) {
-            if (existing.sku() != null && (!existing.sku().equals(request.sku()) || existing.quantity() != request.quantity())) {
-                throw new ResponseStatusException(HttpStatus.CONFLICT, "Order already has another reservation");
+        Optional<Stock> stock = stocks.lockBySku(request.sku());
+        Optional<Reservation> existing = reservations.findById(request.orderId());
+        if (existing.isPresent()) {
+            Reservation reservation = existing.get();
+            if (reservation.getSku() != null && (!reservation.getSku().equals(request.sku())
+                    || reservation.getQuantity() != request.quantity())) {
+                throw new BusinessConflictException("Order already has another reservation");
             }
-            return toResponse(existing);
+            return toResponse(reservation);
         }
-        String status = repository.decrease(request.sku(), request.quantity()) ? "RESERVED" : "REJECTED";
-        Reservation result = new Reservation(request.orderId(), request.sku(), request.quantity(), status);
-        repository.save(result);
-        return toResponse(result);
+        boolean taken = stock.isPresent() && stock.get().take(request.quantity());
+        ReservationStatus status = taken ? ReservationStatus.RESERVED : ReservationStatus.REJECTED;
+        return toResponse(reservations.save(new Reservation(request.orderId(), request.sku(), request.quantity(), status)));
     }
 
     @Transactional
     public StockResponse release(UUID orderId) {
-        repository.lock(orderId);
-        Reservation existing = repository.find(orderId);
-        if (existing != null && existing.status().equals("RELEASED")) {
-            return toResponse(existing);
+        Optional<Reservation> existing = reservations.lockByOrderId(orderId);
+        if (existing.isEmpty()) {
+            return toResponse(reservations.save(new Reservation(orderId, null, 0, ReservationStatus.RELEASED)));
         }
-        if (existing != null && existing.status().equals("RESERVED")) {
-            repository.increase(existing.sku(), existing.quantity());
+        Reservation reservation = existing.get();
+        if (reservation.getStatus() == ReservationStatus.RESERVED) {
+            stocks.lockBySku(reservation.getSku()).ifPresent(stock -> stock.giveBack(reservation.getQuantity()));
         }
-        Reservation result = new Reservation(orderId, existing == null ? null : existing.sku(),
-                existing == null ? 0 : existing.quantity(), "RELEASED");
-        repository.save(result);
-        return toResponse(result);
+        reservation.release();
+        return toResponse(reservation);
     }
-    private StockResponse toResponse(Reservation reservation) {
-        return new StockResponse(reservation.orderId(), reservation.sku(), reservation.quantity(), reservation.status());
+
+    @Transactional
+    public void handle(SagaMessage message) {
+        if (!processed.firstTime(message.messageId())) {
+            return;
+        }
+        if (message.type().equals("ReserveStock")) {
+            StockResponse result = reserve(new StockRequest(message.orderId(), message.sku(), message.quantity()));
+            String type = result.status().equals(ReservationStatus.RESERVED.name()) ? "StockReserved" : "StockRejected";
+            outbox.add("order-results", message.reply(type));
+        } else if (message.type().equals("ReleaseStock")) {
+            release(message.orderId());
+            outbox.add("order-results", message.reply("StockReleased"));
+        } else {
+            throw new IllegalArgumentException("Unknown inventory command: " + message.type());
+        }
+    }
+
+    private static StockResponse toResponse(Reservation reservation) {
+        return new StockResponse(reservation.getOrderId(), reservation.getSku(),
+                reservation.getQuantity(), reservation.getStatus().name());
     }
 }
-

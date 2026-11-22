@@ -77,7 +77,7 @@ services:
       context: .
       args:
         MODULE: order-service
-    ports: ['127.0.0.1:8081:8081']
+    ports: ['127.0.0.1:8081:8081', '127.0.0.1:19091:19091']
     environment:
       SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/order_db
       SPRING_KAFKA_BOOTSTRAP_SERVERS: kafka:29092
@@ -98,16 +98,13 @@ services:
       context: .
       args:
         MODULE: inventory-service
-    ports: ['127.0.0.1:8082:8082']
+    ports: ['127.0.0.1:8082:8082', '127.0.0.1:19092:19092']
     environment:
       SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/inventory_db
       SPRING_KAFKA_BOOTSTRAP_SERVERS: kafka:29092
-      SPRING_DATA_REDIS_HOST: redis
       EUREKA_CLIENT_SERVICEURL_DEFAULTZONE: http://eureka-server:8761/eureka/
     depends_on:
       postgres:
-        condition: service_healthy
-      redis:
         condition: service_healthy
       kafka:
         condition: service_healthy
@@ -119,16 +116,13 @@ services:
       context: .
       args:
         MODULE: payment-service
-    ports: ['127.0.0.1:8083:8083']
+    ports: ['127.0.0.1:8083:8083', '127.0.0.1:19093:19093']
     environment:
       SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/payment_db
       SPRING_KAFKA_BOOTSTRAP_SERVERS: kafka:29092
-      SPRING_DATA_REDIS_HOST: redis
       EUREKA_CLIENT_SERVICEURL_DEFAULTZONE: http://eureka-server:8761/eureka/
     depends_on:
       postgres:
-        condition: service_healthy
-      redis:
         condition: service_healthy
       kafka:
         condition: service_healthy

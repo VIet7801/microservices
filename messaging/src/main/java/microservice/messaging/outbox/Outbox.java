@@ -5,6 +5,8 @@ import microservice.messaging.dto.SagaMessage;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.transaction.annotation.Propagation;
+import org.springframework.transaction.annotation.Transactional;
 
 public class Outbox {
     private final JdbcTemplate jdbc;
@@ -15,6 +17,7 @@ public class Outbox {
         this.mapper = mapper;
     }
 
+    @Transactional(propagation = Propagation.MANDATORY)
     public void add(String topic, SagaMessage message) {
         try {
             jdbc.update("INSERT INTO outbox(id, topic, message_key, payload) VALUES (?, ?, ?, ?)",

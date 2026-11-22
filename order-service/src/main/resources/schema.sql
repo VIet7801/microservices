@@ -13,3 +13,8 @@ CREATE TABLE IF NOT EXISTS order_saga (
     step VARCHAR(30) NOT NULL,
     payment_declined BOOLEAN NOT NULL
 );
+
+CREATE TABLE IF NOT EXISTS processed_message (
+    id UUID PRIMARY KEY,
+    processed_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
+);

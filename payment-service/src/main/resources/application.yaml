@@ -29,11 +29,6 @@ spring:
       value-deserializer: org.apache.kafka.common.serialization.StringDeserializer
       group-id: payment-service
       auto-offset-reset: earliest
-  data:
-    redis:
-      host: ${SPRING_DATA_REDIS_HOST:localhost}
-      port: 6379
-      database: 2
 server:
   port: 8083
 eureka:
@@ -42,5 +37,9 @@ eureka:
       defaultZone: ${EUREKA_CLIENT_SERVICEURL_DEFAULTZONE:http://localhost:8761/eureka/}
   instance:
     prefer-ip-address: true
-
-
+    metadata-map:
+      grpc-port: ${grpc.server.port}
+    lease-renewal-interval-in-seconds: 5
+grpc:
+  server:
+    port: ${GRPC_SERVER_PORT:19093}

@@ -1,64 +1,52 @@
 package microservice.gatewayservice.controller;
 
-import org.springframework.cloud.client.discovery.DiscoveryClient;
-import org.springframework.http.*;
+import jakarta.validation.Valid;
+import microservice.gatewayservice.dto.*;
+import microservice.gatewayservice.service.GatewayService;
+import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
-import org.springframework.web.client.RestClient;
-import org.springframework.web.client.ResourceAccessException;
-import org.springframework.web.server.ResponseStatusException;
-import org.springframework.http.client.JdkClientHttpRequestFactory;
+
 import java.net.URI;
-import java.net.http.HttpClient;
-import java.time.Duration;
+import java.util.List;
 import java.util.UUID;
 
 @RestController
-@RequestMapping("/api/orders")
+@RequestMapping("/api")
 public class GatewayController {
-    private final DiscoveryClient discovery;
-    private final RestClient client;
+    private final GatewayService gateway;
 
-    public GatewayController(DiscoveryClient discovery) {
-        this.discovery = discovery;
-        var factory = new JdkClientHttpRequestFactory(HttpClient.newBuilder()
-                .connectTimeout(Duration.ofSeconds(3)).build());
-        factory.setReadTimeout(Duration.ofSeconds(10));
-        this.client = RestClient.builder().requestFactory(factory).build();
+    public GatewayController(GatewayService gateway) {
+        this.gateway = gateway;
     }
 
-    @PostMapping
-    public ResponseEntity<byte[]> create(@RequestBody String body) {
-        return forward(HttpMethod.POST, "/orders", body);
+    @PostMapping("/orders")
+    public ResponseEntity<OrderResponse> create(@Valid @RequestBody CreateOrderRequest request) {
+        OrderResponse order = gateway.createOrder(request);
+        return ResponseEntity.created(URI.create("/api/orders/" + order.id())).body(order);
     }
 
-    @GetMapping("/{id}")
-    public ResponseEntity<byte[]> find(@PathVariable UUID id) {
-        return forward(HttpMethod.GET, "/orders/" + id, null);
+    @GetMapping("/orders/all")
+    public List<OrderResponse> all() {
+        return gateway.orders();
     }
 
-    private ResponseEntity<byte[]> forward(HttpMethod method, String path, String body) {
-        var instances = discovery.getInstances("order-service");
-        if (instances.isEmpty()) {
-            throw new ResponseStatusException(HttpStatus.SERVICE_UNAVAILABLE, "Order service is unavailable");
-        }
-        var request = client.method(method).uri(instances.getFirst().getUri().resolve(path));
-        if (body != null) {
-            request.contentType(MediaType.APPLICATION_JSON).body(body);
-        }
-        try {
-            return request.exchange((req, response) -> {
-                HttpHeaders headers = new HttpHeaders();
-                if (response.getHeaders().getContentType() != null) {
-                    headers.setContentType(response.getHeaders().getContentType());
-                }
-                URI location = response.getHeaders().getLocation();
-                if (location != null && location.getPath().startsWith("/orders/")) {
-                    headers.setLocation(URI.create("/api" + location.getPath()));
-                }
-                return new ResponseEntity<>(response.getBody().readAllBytes(), headers, response.getStatusCode());
-            });
-        } catch (ResourceAccessException e) {
-            throw new ResponseStatusException(HttpStatus.BAD_GATEWAY, "Cannot reach order service");
-        }
+    @GetMapping("/orders/{id}")
+    public OrderResponse find(@PathVariable UUID id) {
+        return gateway.order(id);
+    }
+
+    @GetMapping("/inventory")
+    public List<StockResponse> stocks() {
+        return gateway.stocks();
+    }
+
+    @GetMapping("/inventory/reservations/{id}")
+    public ReservationResponse reservation(@PathVariable UUID id) {
+        return gateway.reservation(id);
+    }
+
+    @GetMapping("/payments/{id}")
+    public PaymentResponse payment(@PathVariable UUID id) {
+        return gateway.payment(id);
     }
 }
