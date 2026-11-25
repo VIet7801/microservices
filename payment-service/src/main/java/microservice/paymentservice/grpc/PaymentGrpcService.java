@@ -19,7 +19,8 @@ public class PaymentGrpcService extends PaymentApiGrpc.PaymentApiImplBase {
     @Override
     public void pay(PayInput request, StreamObserver<PaymentReply> observer) {
         GrpcErrors.respond(observer, () -> reply(payments.pay(new PaymentRequest(
-                GrpcErrors.orderId(request.getOrderId()), request.getDeclined()))));
+                GrpcErrors.orderId(request.getOrderId()), request.getDeclined(),
+                GrpcErrors.money(request.getAmount())))));
     }
 
     @Override
@@ -29,6 +30,6 @@ public class PaymentGrpcService extends PaymentApiGrpc.PaymentApiImplBase {
 
     private PaymentReply reply(PaymentResponse payment) {
         return PaymentReply.newBuilder().setOrderId(payment.orderId().toString())
-                .setStatus(payment.status()).build();
+                .setStatus(payment.status()).setAmount(GrpcErrors.money(payment.amount())).build();
     }
 }

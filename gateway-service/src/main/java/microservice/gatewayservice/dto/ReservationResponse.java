@@ -1,3 +1,5 @@
 package microservice.gatewayservice.dto;
 
-public record ReservationResponse(String orderId, String sku, int quantity, String status) {}
+import java.math.BigDecimal;
+
+public record ReservationResponse(String orderId, String sku, int quantity, String status, BigDecimal amount) {}

@@ -1,6 +1,6 @@
 package microservice.common.exception;
 
-public class BusinessConflictException extends RuntimeException {
+public class BusinessConflictException extends BusinessException {
     public BusinessConflictException(String message) {
         super(message);
     }

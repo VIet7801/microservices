@@ -34,7 +34,7 @@ public class OrderCache {
     }
 
     public void put(OrderResponse order) {
-        if (order.status().equals(OrderStatus.PENDING.name())) {
+        if (!order.status().equals(OrderStatus.CANCELED.name())) {
             return;
         }
         try {

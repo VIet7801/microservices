@@ -1,13 +1,9 @@
 package microservice.orderservice.service;
 
-import microservice.orderservice.dto.OrderResponse;
 import microservice.orderservice.cache.OrderCache;
+import microservice.orderservice.dto.OrderResponse;
 import microservice.orderservice.entity.OrderEntity;
-import microservice.orderservice.entity.OrderSagaEntity;
 import microservice.orderservice.repository.OrderRepository;
-import microservice.orderservice.repository.SagaRepository;
-import microservice.messaging.outbox.Outbox;
-import microservice.messaging.dto.SagaMessage;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import java.util.List;
@@ -18,27 +14,27 @@ import java.util.UUID;
 @Transactional(readOnly = true)
 public class OrderService {
     private final OrderRepository repository;
-    private final SagaRepository sagas;
-    private final Outbox outbox;
+    private final OrderSaga saga;
     private final OrderCache cache;
 
-    public OrderService(OrderRepository repository, SagaRepository sagas, Outbox outbox, OrderCache cache) {
+    public OrderService(OrderRepository repository, OrderSaga saga, OrderCache cache) {
         this.repository = repository;
-        this.sagas = sagas;
-        this.outbox = outbox;
+        this.saga = saga;
         this.cache = cache;
     }
 
     @Transactional
-    public OrderResponse create(String sku, int quantity, boolean paymentDeclined) {
-        OrderEntity order = repository.save(OrderEntity.pending(sku, quantity));
-        sagas.save(OrderSagaEntity.start(order.getId(), paymentDeclined));
-        outbox.add("inventory-commands", SagaMessage.of(order.getId(), "ReserveStock", sku, quantity, paymentDeclined));
+    public OrderResponse create(String customerId, String sku, int quantity, boolean paymentDeclined) {
+        OrderEntity order = repository.save(OrderEntity.pending(customerId, sku, quantity));
+        saga.start(order, paymentDeclined);
         return toResponse(order);
     }
 
-    public List<OrderResponse> getAll() {
-        return repository.findAll().stream().map(OrderService::toResponse).toList();
+    public List<OrderResponse> list(String customerId) {
+        List<OrderEntity> orders = customerId == null || customerId.isBlank()
+                ? repository.findAll()
+                : repository.findByCustomerId(customerId);
+        return orders.stream().map(OrderService::toResponse).toList();
     }
 
     public Optional<OrderResponse> findById(UUID id) {
@@ -51,7 +47,13 @@ public class OrderService {
         return order;
     }
 
+    @Transactional
+    public OrderResponse cancel(UUID id) {
+        return toResponse(saga.cancel(id));
+    }
+
     private static OrderResponse toResponse(OrderEntity order) {
-        return new OrderResponse(order.getId(), order.getSku(), order.getQuantity(), order.getStatus().name());
+        return new OrderResponse(order.getId(), order.getCustomerId(), order.getSku(), order.getQuantity(),
+                order.getTotalAmount(), order.getStatus().name());
     }
 }

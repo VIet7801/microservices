@@ -8,6 +8,18 @@ CREATE TABLE IF NOT EXISTS outbox (
 );
 CREATE INDEX IF NOT EXISTS outbox_pending ON outbox(created_at) WHERE sent_at IS NULL;
 
+CREATE TABLE IF NOT EXISTS orders (
+    id UUID PRIMARY KEY,
+    customer_id VARCHAR(100),
+    sku VARCHAR(100) NOT NULL,
+    quantity INTEGER NOT NULL,
+    total_amount NUMERIC(12, 2),
+    status VARCHAR(30) NOT NULL
+);
+ALTER TABLE orders ADD COLUMN IF NOT EXISTS customer_id VARCHAR(100);
+ALTER TABLE orders ADD COLUMN IF NOT EXISTS total_amount NUMERIC(12, 2);
+ALTER TABLE orders DROP CONSTRAINT IF EXISTS orders_status_check;
+
 CREATE TABLE IF NOT EXISTS order_saga (
     order_id UUID PRIMARY KEY,
     step VARCHAR(30) NOT NULL,

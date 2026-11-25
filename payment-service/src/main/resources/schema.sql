@@ -11,8 +11,10 @@ CREATE INDEX IF NOT EXISTS outbox_pending ON outbox(created_at) WHERE sent_at IS
 CREATE TABLE IF NOT EXISTS payment (
     order_id UUID PRIMARY KEY,
     status VARCHAR(30) NOT NULL,
+    amount NUMERIC(12, 2),
     created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
+ALTER TABLE payment ADD COLUMN IF NOT EXISTS amount NUMERIC(12, 2);
 
 CREATE TABLE IF NOT EXISTS processed_message (
     id UUID PRIMARY KEY,

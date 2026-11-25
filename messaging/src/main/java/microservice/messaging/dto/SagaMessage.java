@@ -1,9 +1,10 @@
 package microservice.messaging.dto;
 
+import java.math.BigDecimal;
 import java.util.UUID;
 
 public record SagaMessage(UUID messageId, UUID orderId, String type, String sku,
-                          int quantity, boolean paymentDeclined) {
+                          int quantity, BigDecimal amount, boolean paymentDeclined) {
     public SagaMessage {
         if (messageId == null || orderId == null || type == null || type.isBlank()
                 || sku == null || sku.isBlank() || sku.length() > 100 || quantity < 1) {
@@ -11,11 +12,16 @@ public record SagaMessage(UUID messageId, UUID orderId, String type, String sku,
         }
     }
 
-    public static SagaMessage of(UUID orderId, String type, String sku, int quantity, boolean declined) {
-        return new SagaMessage(UUID.randomUUID(), orderId, type, sku, quantity, declined);
+    public static SagaMessage of(UUID orderId, String type, String sku, int quantity,
+                                 BigDecimal amount, boolean declined) {
+        return new SagaMessage(UUID.randomUUID(), orderId, type, sku, quantity, amount, declined);
     }
 
     public SagaMessage reply(String result) {
-        return of(orderId, result, sku, quantity, paymentDeclined);
+        return of(orderId, result, sku, quantity, amount, paymentDeclined);
+    }
+
+    public SagaMessage reply(String result, BigDecimal newAmount) {
+        return of(orderId, result, sku, quantity, newAmount, paymentDeclined);
     }
 }

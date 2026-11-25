@@ -1,3 +1,5 @@
 package microservice.gatewayservice.dto;
 
-public record PaymentResponse(String orderId, String status) {}
+import java.math.BigDecimal;
+
+public record PaymentResponse(String orderId, String status, BigDecimal amount) {}

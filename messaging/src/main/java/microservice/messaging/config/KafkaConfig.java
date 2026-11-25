@@ -3,6 +3,7 @@ package microservice.messaging.config;
 import org.apache.kafka.clients.admin.NewTopic;
 import org.apache.kafka.common.TopicPartition;
 import com.fasterxml.jackson.core.JsonProcessingException;
+import microservice.common.exception.BusinessException;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.kafka.config.TopicBuilder;
@@ -19,7 +20,8 @@ public class KafkaConfig {
                 (record, exception) -> new TopicPartition(record.topic() + ".DLT", record.partition()));
         recoverer.setFailIfSendResultIsError(true);
         var handler = new DefaultErrorHandler(recoverer, new FixedBackOff(1000, FixedBackOff.UNLIMITED_ATTEMPTS));
-        handler.addNotRetryableExceptions(IllegalArgumentException.class, JsonProcessingException.class);
+        handler.addNotRetryableExceptions(IllegalArgumentException.class, JsonProcessingException.class,
+                BusinessException.class);
         return handler;
     }
 

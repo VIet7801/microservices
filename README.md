@@ -77,33 +77,57 @@ Reimport Maven để IDE nhận mã sinh trong `grpc-api/target/generated-source
 
 ## Gọi thử qua Gateway
 
-Kho khởi tạo `SKU-001`, `SKU-002`, `SKU-003`, mỗi mã 6 sản phẩm. Dữ liệu đã tồn tại không bị reset khi khởi động lại.
+Kho khởi tạo `SKU-001`, `SKU-002`, `SKU-003` (có tên, giá), mỗi mã 6 sản phẩm. Dữ liệu đã tồn tại không bị reset khi khởi động lại.
+
+### API
+
+| Method | Đường dẫn | Ý nghĩa |
+| --- | --- | --- |
+| POST | `/api/products` | Tạo sản phẩm `{sku, name, price, available}` → 201; trùng SKU → 409 |
+| GET | `/api/products` | Danh sách sản phẩm đang bán (`active = true`) |
+| GET | `/api/products/{sku}` | Xem một sản phẩm (kể cả đã ngừng bán) |
+| PUT | `/api/products/{sku}` | Sửa `{name, price, available}` |
+| DELETE | `/api/products/{sku}` | Ngừng bán (xoá mềm, `active = false`) → 204; đơn mới với SKU này bị từ chối |
+| POST | `/api/orders` | Đặt hàng `{customerId, sku, quantity, paymentDeclined}` → 201, `PENDING` |
+| GET | `/api/orders?customerId=` | Danh sách đơn, lọc theo khách nếu có `customerId` |
+| GET | `/api/orders/{id}` | Xem đơn, có `totalAmount` sau khi giữ hàng |
+| POST | `/api/orders/{id}/cancel` | Huỷ đơn đã `COMPLETED`: hoàn tiền → trả hàng → `CANCELED`; đơn còn `PENDING` → 409 |
+| GET | `/api/inventory/reservations/{orderId}` | Phiếu giữ hàng của đơn |
+| GET | `/api/payments/{orderId}` | Giao dịch thanh toán của đơn |
+
+Đơn hàng và thanh toán không có API sửa/xoá: đơn chỉ đổi trạng thái qua Saga hoặc huỷ; thanh toán chỉ do Saga tạo. Sản phẩm xoá mềm để giữ lịch sử cho các đơn cũ.
 
 ```powershell
 $base = 'http://localhost:8084/api'
-Invoke-RestMethod "$base/inventory"
+Invoke-RestMethod "$base/products"
+Invoke-RestMethod "$base/products" -Method Post -ContentType 'application/json' -Body '{"sku":"SKU-004","name":"Webcam","price":450000,"available":10}'
 
-$ok = Invoke-RestMethod "$base/orders" -Method Post -ContentType 'application/json' -Body '{"sku":"SKU-001","quantity":2,"paymentDeclined":false}'
-$short = Invoke-RestMethod "$base/orders" -Method Post -ContentType 'application/json' -Body '{"sku":"SKU-002","quantity":99,"paymentDeclined":false}'
-$declined = Invoke-RestMethod "$base/orders" -Method Post -ContentType 'application/json' -Body '{"sku":"SKU-003","quantity":2,"paymentDeclined":true}'
+$ok = Invoke-RestMethod "$base/orders" -Method Post -ContentType 'application/json' -Body '{"customerId":"kh-01","sku":"SKU-001","quantity":2,"paymentDeclined":false}'
+$short = Invoke-RestMethod "$base/orders" -Method Post -ContentType 'application/json' -Body '{"customerId":"kh-01","sku":"SKU-002","quantity":99,"paymentDeclined":false}'
+$declined = Invoke-RestMethod "$base/orders" -Method Post -ContentType 'application/json' -Body '{"customerId":"kh-02","sku":"SKU-003","quantity":2,"paymentDeclined":true}'
 
 # Các bước xử lý bất đồng bộ; đọc lại đến khi không còn PENDING.
 Invoke-RestMethod "$base/orders/$($ok.id)"
 Invoke-RestMethod "$base/orders/$($short.id)"
 Invoke-RestMethod "$base/orders/$($declined.id)"
-Invoke-RestMethod "$base/inventory"
-Invoke-RestMethod "$base/inventory/reservations/$($declined.id)"
 Invoke-RestMethod "$base/payments/$($ok.id)"
-Invoke-RestMethod "$base/orders/all"
+Invoke-RestMethod "$base/orders?customerId=kh-01"
+
+# Huỷ đơn đã hoàn tất: hoàn tiền rồi trả hàng.
+Invoke-RestMethod "$base/orders/$($ok.id)/cancel" -Method Post
+Invoke-RestMethod "$base/orders/$($ok.id)"
+Invoke-RestMethod "$base/products/SKU-001"
 ```
 
 | Trường hợp | Order | Reservation | Payment | Tồn kho |
 | --- | --- | --- | --- | --- |
-| Đủ hàng, thanh toán thành công | COMPLETED | RESERVED | SUCCEEDED | 6 → 4 |
-| Không đủ hàng | CANCELED | REJECTED | Không có giao dịch (`404`) | 6 |
+| Đủ hàng, thanh toán thành công | COMPLETED, `totalAmount` = giá × số lượng | RESERVED | SUCCEEDED, cùng số tiền | 6 → 4 |
+| Không đủ hàng / sản phẩm đã ngừng bán | CANCELED | REJECTED | Không có giao dịch (`404`) | không đổi |
 | Thanh toán bị từ chối | CANCELED | RELEASED | DECLINED | 6 → 4 → 6 |
+| Huỷ đơn đã COMPLETED | CANCELLING → CANCELED | RELEASED | REFUNDED | 4 → 6 |
 
-`PENDING` bao gồm các bước `RESERVING`, `PAYING`, `RELEASING` trong bảng `order_saga`.
+`PENDING` bao gồm các bước `RESERVING`, `PAYING`; `CANCELLING` gồm `REFUNDING`, `RELEASING` trong bảng `order_saga`.
+Giá được chốt tại thời điểm giữ hàng (lưu ở `reservation.amount`); sửa giá sau đó không ảnh hưởng đơn đã đặt.
 Đơn chỉ chuyển sang `CANCELED` sau khi đã nhận `StockReleased` nếu cần bù trừ.
 `paymentDeclined` là cờ giả lập kết quả thanh toán, không gọi cổng thanh toán thật.
 
@@ -113,14 +137,14 @@ Hợp đồng nằm ở `grpc-api/src/main/proto/ordering.proto`; adapter nằm 
 Có thể import file proto vào Postman gRPC hoặc dùng `grpcurl` (cài riêng). Không cần server reflection:
 
 ```powershell
-grpcurl -plaintext -import-path grpc-api/src/main/proto -proto ordering.proto localhost:19092 ordering.InventoryApi/ListStock
+grpcurl -plaintext -import-path grpc-api/src/main/proto -proto ordering.proto localhost:19092 ordering.InventoryApi/ListProducts
 '{"orderId":"11111111-1111-4111-8111-111111111111","sku":"SKU-002","quantity":2}' | grpcurl -plaintext -import-path grpc-api/src/main/proto -proto ordering.proto -d '@' localhost:19092 ordering.InventoryApi/ReserveStock
 '{"id":"11111111-1111-4111-8111-111111111111"}' | grpcurl -plaintext -import-path grpc-api/src/main/proto -proto ordering.proto -d '@' localhost:19092 ordering.InventoryApi/ReleaseStock
 ```
 
 Lặp lại ReserveStock trước khi ReleaseStock: kho chỉ giảm một lần. Lặp lại ReleaseStock: kho chỉ tăng một lần.
 Gửi ReserveStock sau khi đã release cùng orderId không giữ hàng lại.
-Gửi Pay nhiều lần với cùng orderId chỉ có một bản ghi payment và giữ kết quả lần đầu.
+Gửi Pay (cần `amount`) nhiều lần với cùng orderId chỉ có một bản ghi payment và giữ kết quả lần đầu.
 Các RPC thay đổi Inventory/Payment dùng để kiểm tra riêng trong ví dụ; khi đặt đơn qua Gateway, Saga gửi các lệnh này qua Kafka.
 
 ## Các yêu cầu từ mục 8
@@ -132,7 +156,7 @@ Các RPC thay đổi Inventory/Payment dùng để kiểm tra riêng trong ví d
 | 10. Producer/consumer | Publisher dùng `KafkaTemplate`; ba listener đọc `inventory-commands`, `payment-commands`, `order-results` |
 | 11. Saga orchestration | `order-service/.../service/OrderSaga.java`; lưu bước vào PostgreSQL, gửi ReleaseStock khi PaymentDeclined |
 | 12. Nghiệp vụ | `InventoryService`, `PaymentService`; tồn kho cập nhật có điều kiện, khóa theo orderId, payment có khóa chính orderId |
-| 13. Redis | `OrderCache`: cache đơn đã COMPLETED/CANCELED trong 10 phút; PENDING luôn đọc DB; Redis lỗi thì đọc DB |
+| 13. Redis | `OrderCache`: chỉ cache đơn CANCELED (trạng thái cuối) trong 10 phút; đơn COMPLETED vẫn có thể bị huỷ nên luôn đọc DB; Redis lỗi thì đọc DB |
 | 14. Eureka | `GrpcClients`: discovery từng lần gọi, dùng `grpc-port`, tái sử dụng channel, deadline 5 giây |
 | 15. Lỗi/groupId | `GrpcErrors`, `GlobalExceptionHandler`, `KafkaConfig`; tất cả Maven module kế thừa `com.example.orders` |
 
@@ -146,8 +170,21 @@ Maven groupId và Kafka group-id là hai khái niệm khác nhau.
 - Inventory/Payment ghi nghiệp vụ, `processed_message` và kết quả Outbox cùng transaction. Lỗi rollback cả ba; Kafka chỉ commit offset sau khi xử lý thành công.
 - Publisher giao ít nhất một lần: có thể gửi trùng nếu dừng sau Kafka ACK nhưng trước khi ghi `sent_at`. Consumer dùng `processed_message.id` để bỏ qua đúng message đã xử lý; nghiệp vụ còn chống trùng theo orderId.
 - Khi Kafka tắt, message ở lại Outbox với `sent_at IS NULL`; publisher thử lại khi Kafka trở lại. Có thể kiểm tra bằng `docker compose stop kafka`, tạo đơn, xem DB, rồi `docker compose start kafka`.
-- JSON/lệnh Kafka không hợp lệ chuyển sang topic `<topic>.DLT`; lỗi xử lý tạm thời được retry. Xem DLT trong Kafka UI và sửa/phát lại message nếu cần.
-- gRPC trả INVALID_ARGUMENT/NOT_FOUND/ALREADY_EXISTS/INTERNAL; Gateway chuyển thành HTTP 400/404/409/500. Service mất kết nối trả 503, quá deadline trả 504. JSON lỗi chung có `timestamp`, `status`, `code`, `message`, `path`.
+- JSON/lệnh Kafka không hợp lệ và lỗi nghiệp vụ (`BusinessException`) chuyển ngay sang topic `<topic>.DLT`; lỗi tạm thời (mất DB, deadlock) được retry. Xem DLT trong Kafka UI và sửa/phát lại message nếu cần.
+- Exception nghiệp vụ nằm ở module `common` (`microservice.common.exception`). `GrpcErrors` chuyển thành mã gRPC, Gateway chuyển tiếp thành HTTP:
+
+| Exception trong service | gRPC | HTTP |
+| --- | --- | --- |
+| `IllegalArgumentException` (dữ liệu sai) | INVALID_ARGUMENT | 400 |
+| `NotFoundException` | NOT_FOUND | 404 |
+| `BusinessConflictException` (trùng SKU, giữ hàng khác) | ALREADY_EXISTS | 409 |
+| `InvalidStateException` (huỷ đơn chưa hoàn tất) | FAILED_PRECONDITION | 409 |
+| `DataIntegrityViolationException` (vi phạm khoá khi ghi đồng thời) | ALREADY_EXISTS | 409 |
+| `TransientDataAccessException` (khoá/deadlock tạm thời) | UNAVAILABLE | 503 |
+| Lỗi khác | INTERNAL | 500 (chỉ log chi tiết, không trả ra ngoài) |
+
+  Service mất kết nối trả 503, quá deadline trả 504. JSON lỗi chung có `timestamp`, `status`, `code`, `message`, `path`.
+- Entity có khoá tự gán (`Product`, `Reservation`, `Payment`) implement `Persistable`, nên bản ghi mới luôn INSERT; hai request tạo cùng khoá thì một cái thành công, cái còn lại nhận 409 thay vì ghi đè.
 
 Đây là ví dụ chạy local: gRPC plaintext, thanh toán giả lập; chưa có timeout nghiệp vụ cho Saga hay tự động xử lý DLT.
 Nếu một participant ngừng hoạt động, đơn chờ PENDING cho tới khi nó xử lý được message.

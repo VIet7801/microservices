@@ -7,11 +7,16 @@ option java_multiple_files = true;
 service OrderApi {
   rpc CreateOrder(CreateOrderInput) returns (OrderReply);
   rpc GetOrder(OrderId) returns (OrderReply);
-  rpc ListOrders(Empty) returns (OrderList);
+  rpc ListOrders(ListOrdersInput) returns (OrderList);
+  rpc CancelOrder(OrderId) returns (OrderReply);
 }
 
 service InventoryApi {
-  rpc ListStock(Empty) returns (StockList);
+  rpc CreateProduct(ProductInput) returns (ProductReply);
+  rpc GetProduct(Sku) returns (ProductReply);
+  rpc ListProducts(Empty) returns (ProductList);
+  rpc UpdateProduct(ProductInput) returns (ProductReply);
+  rpc DeleteProduct(Sku) returns (Empty);
   rpc GetReservation(OrderId) returns (ReservationReply);
   rpc ReserveStock(ReserveStockInput) returns (ReservationReply);
   rpc ReleaseStock(OrderId) returns (ReservationReply);
@@ -24,23 +29,40 @@ service PaymentApi {
 
 message Empty {}
 message OrderId { string id = 1; }
+message Sku { string sku = 1; }
+
 message CreateOrderInput {
   string sku = 1;
   int32 quantity = 2;
   bool payment_declined = 3;
+  string customer_id = 4;
 }
+message ListOrdersInput { string customer_id = 1; }
 message OrderReply {
   string id = 1;
   string sku = 2;
   int32 quantity = 3;
   string status = 4;
+  string customer_id = 5;
+  string total_amount = 6;
 }
 message OrderList { repeated OrderReply orders = 1; }
-message StockItem {
+
+message ProductInput {
   string sku = 1;
-  int32 available = 2;
+  string name = 2;
+  string price = 3;
+  int32 available = 4;
 }
-message StockList { repeated StockItem stocks = 1; }
+message ProductReply {
+  string sku = 1;
+  string name = 2;
+  string price = 3;
+  int32 available = 4;
+  bool active = 5;
+}
+message ProductList { repeated ProductReply products = 1; }
+
 message ReserveStockInput {
   string order_id = 1;
   string sku = 2;
@@ -51,12 +73,16 @@ message ReservationReply {
   string sku = 2;
   int32 quantity = 3;
   string status = 4;
+  string amount = 5;
 }
+
 message PayInput {
   string order_id = 1;
   bool declined = 2;
+  string amount = 3;
 }
 message PaymentReply {
   string order_id = 1;
   string status = 2;
+  string amount = 3;
 }
